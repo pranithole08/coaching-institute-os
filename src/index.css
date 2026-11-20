@@ -1,0 +1,230 @@
+@import "tailwindcss";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@plugin "tailwindcss-animate";
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.52 0.115 155);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.52 0.115 155);
+  --radius: 0.625rem;
+  --success: oklch(0.52 0.115 155);
+  --success-soft: oklch(0.96 0.02 155);
+  --warning: oklch(0.62 0.13 70);
+  --warning-soft: oklch(0.97 0.03 80);
+}
+
+.dark {
+  --background: oklch(0.17 0.012 155);
+  --foreground: oklch(0.965 0.004 155);
+  --card: oklch(0.215 0.014 155);
+  --card-foreground: oklch(0.965 0.004 155);
+  --popover: oklch(0.215 0.014 155);
+  --popover-foreground: oklch(0.965 0.004 155);
+  --primary: oklch(0.74 0.13 156);
+  --primary-foreground: oklch(0.18 0.02 155);
+  --secondary: oklch(0.265 0.012 155);
+  --secondary-foreground: oklch(0.965 0.004 155);
+  --muted: oklch(0.265 0.012 155);
+  --muted-foreground: oklch(0.715 0.012 155);
+  --accent: oklch(0.285 0.016 155);
+  --accent-foreground: oklch(0.965 0.004 155);
+  --destructive: oklch(0.55 0.205 25);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.74 0.13 156);
+  --success: oklch(0.74 0.13 156);
+  --success-soft: oklch(0.27 0.045 156);
+  --warning: oklch(0.79 0.13 78);
+  --warning-soft: oklch(0.29 0.05 78);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Dark mode — legacy hardcoded amber/emerald chips need a dark counterpart so
+   status pills stay legible instead of glowing white on a dark card.
+   --------------------------------------------------------------------------- */
+
+.dark .bg-amber-50 {
+  background-color: oklch(0.29 0.05 78);
+}
+.dark .bg-amber-50\/40 {
+  background-color: oklch(0.29 0.05 78 / 40%);
+}
+.dark .bg-amber-50\/50 {
+  background-color: oklch(0.29 0.05 78 / 50%);
+}
+.dark .bg-amber-50\/60 {
+  background-color: oklch(0.31 0.05 78 / 60%);
+}
+.dark .bg-amber-50\/70 {
+  background-color: oklch(0.31 0.05 78 / 70%);
+}
+.dark .bg-amber-100 {
+  background-color: oklch(0.33 0.06 78);
+}
+.dark .bg-amber-400 {
+  background-color: oklch(0.72 0.13 78);
+}
+.dark .text-amber-600 {
+  color: oklch(0.79 0.13 78);
+}
+.dark .text-amber-700 {
+  color: oklch(0.82 0.13 78);
+}
+.dark .text-amber-800 {
+  color: oklch(0.86 0.11 78);
+}
+.dark .text-amber-900 {
+  color: oklch(0.9 0.09 78);
+}
+.dark .border-amber-200 {
+  border-color: oklch(0.78 0.12 78 / 35%);
+}
+.dark .text-emerald-700 {
+  color: oklch(0.8 0.13 156);
+}
+.dark .text-emerald-400 {
+  color: oklch(0.82 0.13 156);
+}
+.dark .border-emerald-500 {
+  border-color: oklch(0.72 0.13 156);
+}
+.dark .bg-destructive\/5 {
+  background-color: oklch(0.68 0.19 25 / 12%);
+}
+
+/* ---------------------------------------------------------------------------
+   Printable attendance sheets — A4, exact millimetre geometry
+   --------------------------------------------------------------------------- */
+
+.sheet-page {
+  width: 210mm;
+  height: 297mm;
+  background: #fff;
+  color: #000;
+  position: relative;
+  overflow: hidden;
+}
+
+.sheet-page svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* The app chrome must not paint over the sheet when printing from the app. */
+  aside,
+  body > div > header {
+    display: none !important;
+  }
+
+  main {
+    padding-left: 0 !important;
+  }
+
+  .print-root {
+    position: static;
+    inset: auto;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+
+  .print-overlay {
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
+
+  .print-overlay > div {
+    max-width: none !important;
+  }
+
+  .sheet-page {
+    page-break-after: always;
+    break-after: page;
+    box-shadow: none !important;
+    border: 0 !important;
+  }
+
+  .sheet-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+}

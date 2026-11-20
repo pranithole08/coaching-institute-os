@@ -1,0 +1,421 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ---------------------------------------------------------------------------
+// Staff & auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String    @map("password_hash")
+  role         String    @default("teacher") // admin | teacher
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  sessions     Session[]
+  teacher      Teacher?
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Students
+// ---------------------------------------------------------------------------
+
+model Student {
+  id            String       @id @default(cuid())
+  name          String
+  className     String       @map("class_name")
+  batch         String
+  rollNo        String?      @map("roll_no")
+  parentName    String       @map("parent_name")
+  parentPhone   String       @map("parent_phone") // E.164, e.g. +919876543210
+  parentEmail   String?      @map("parent_email")
+  admissionDate DateTime     @default(now()) @map("admission_date")
+  status        String       @default("active") // active | inactive
+  feeAmount     Int          @default(0) @map("fee_amount") // monthly fee, whole rupees
+  feeDueDay     Int          @default(5) @map("fee_due_day")
+  notes         String?
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  attendance  Attendance[]
+  invoices    FeeInvoice[]
+  results     TestResult[]
+  messages    MessageLog[]
+  feePayments FeePayment[]
+  scanRows    AttendanceScanRow[]
+
+  @@index([className, batch])
+  @@index([status])
+  @@map("students")
+}
+
+// ---------------------------------------------------------------------------
+// Attendance
+// ---------------------------------------------------------------------------
+
+model Attendance {
+  id        String   @id @default(cuid())
+  studentId String   @map("student_id")
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date      String // YYYY-MM-DD (local institute date)
+  session   String   @default("") // subject/session label; "" = the default daily session
+  status    String // present | absent | late
+  markedBy  String?  @map("marked_by")
+  source    String   @default("manual") // manual | scan
+  sheetId   String?  @map("sheet_id")
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([studentId, date, session])
+  @@index([date])
+  @@map("attendance")
+}
+
+// ---------------------------------------------------------------------------
+// Fees
+// ---------------------------------------------------------------------------
+
+model FeeInvoice {
+  id         String    @id @default(cuid())
+  studentId  String    @map("student_id")
+  student    Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  period     String // YYYY-MM
+  amount     Int
+  discount   Int       @default(0)
+  paidAmount Int       @default(0) @map("paid_amount")
+  dueDate    DateTime  @map("due_date")
+  status     String    @default("pending") // pending | partial | paid | waived
+  paidAt     DateTime? @map("paid_at")
+  method     String? // cash | upi | card | bank
+  receiptNo  String?   @unique @map("receipt_no")
+  notes      String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  payments FeePayment[]
+
+  @@unique([studentId, period])
+  @@index([status, dueDate])
+  @@map("fee_invoices")
+}
+
+model FeePayment {
+  id         String     @id @default(cuid())
+  invoiceId  String     @map("invoice_id")
+  invoice    FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  studentId  String     @map("student_id")
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  amount     Int
+  method     String     @default("cash")
+  paidAt     DateTime   @default(now()) @map("paid_at")
+  receiptNo  String?    @unique @map("receipt_no")
+  note       String?
+  recordedBy String?    @map("recorded_by")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  @@index([studentId])
+  @@index([paidAt])
+  @@map("fee_payments")
+}
+
+model FeeStructure {
+  id        String   @id @default(cuid())
+  className String   @map("class_name")
+  batch     String   @default("")
+  amount    Int
+  dueDay    Int      @default(5) @map("due_day")
+  discount  Int      @default(0)
+  note      String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([className, batch])
+  @@map("fee_structures")
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  category    String
+  description String
+  amount      Int
+  date        String // YYYY-MM-DD
+  paidTo      String?  @map("paid_to")
+  method      String   @default("cash")
+  recordedBy  String?  @map("recorded_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([date])
+  @@map("expenses")
+}
+
+// ---------------------------------------------------------------------------
+// Tests & performance
+// ---------------------------------------------------------------------------
+
+model Test {
+  id          String       @id @default(cuid())
+  name        String
+  subject     String
+  className   String       @map("class_name")
+  batch       String?
+  date        DateTime
+  maxMarks    Int          @default(100) @map("max_marks")
+  status      String       @default("draft") // draft | published
+  publishedAt DateTime?    @map("published_at")
+  publishedBy String?      @map("published_by")
+  createdBy   String?      @map("created_by")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  results     TestResult[]
+
+  @@index([date])
+  @@map("tests")
+}
+
+model TestResult {
+  id        String   @id @default(cuid())
+  testId    String   @map("test_id")
+  test      Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  studentId String   @map("student_id")
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  marks     Float? // null = not entered. Never treat blank as zero.
+  status    String   @default("present") // present | absent | exempt
+  remarks   String?
+  enteredBy String?  @map("entered_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([testId, studentId])
+  @@index([studentId])
+  @@map("test_results")
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp message log — the single source of truth for delivery status
+// ---------------------------------------------------------------------------
+
+model MessageLog {
+  id         String   @id @default(cuid())
+  studentId  String?  @map("student_id")
+  student    Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  to         String
+  template   String // welcome | absence | fee_reminder | payment | test_result | announcement | custom
+  body       String
+  // queued | sent | delivered | read | failed | not_configured | simulated
+  status     String   @default("queued")
+  providerId String?  @map("provider_id")
+  error      String?
+  refId      String?  @map("ref_id") // dedupe key, e.g. invoice id or attendance id
+  sentBy     String?  @map("sent_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([refId])
+  @@map("message_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Automation rules & settings
+// ---------------------------------------------------------------------------
+
+model Automation {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  description String
+  enabled     Boolean  @default(true)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("automations")
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  type      String
+  message   String
+  actor     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("activities")
+}
+
+// ---------------------------------------------------------------------------
+// Paper attendance sheets — printable sheet + scanned verification
+// ---------------------------------------------------------------------------
+
+model AttendanceSheet {
+  id          String   @id @default(cuid())
+  code        String   @unique // printed on the sheet, e.g. ATT-20261119-4F2A
+  className   String   @map("class_name")
+  batch       String
+  date        String // YYYY-MM-DD
+  session     String   @default("") // subject / session label
+  status      String   @default("generated") // generated | uploaded | reviewed | confirmed
+  createdBy   String?  @map("created_by")
+  uploadedBy  String?  @map("uploaded_by")
+  reviewedBy  String?  @map("reviewed_by")
+  confirmedBy String?  @map("confirmed_by")
+  confirmedAt DateTime? @map("confirmed_at")
+  imageData   String?  @map("image_data") // compressed data URL of the scanned sheet
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rows AttendanceScanRow[]
+
+  @@index([date])
+  @@index([className, batch])
+  @@map("attendance_sheets")
+}
+
+model AttendanceScanRow {
+  id             String          @id @default(cuid())
+  sheetId        String          @map("sheet_id")
+  sheet          AttendanceSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  studentId      String?         @map("student_id")
+  student        Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  rollNo         String?
+  studentName    String?         @map("student_name")
+  detectedStatus String?         @map("detected_status") // present | absent | late | null
+  confidence     Float           @default(0)
+  finalStatus    String?         @map("final_status") // present | absent | late
+  verified       Boolean         @default(false)
+  needsReview    Boolean         @default(false) @map("needs_review")
+  note           String?
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@unique([sheetId, studentId])
+  @@map("attendance_scan_rows")
+}
+
+// ---------------------------------------------------------------------------
+// Faculty, batch assignments & timetable
+// ---------------------------------------------------------------------------
+
+model Teacher {
+  id        String   @id @default(cuid())
+  userId    String?  @unique @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name      String
+  email     String?  @unique
+  phone     String?
+  subjects  String   @default("") // comma separated subject list
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  assignments BatchAssignment[]
+  slots       TimetableSlot[]
+
+  @@map("teachers")
+}
+
+model BatchAssignment {
+  id        String   @id @default(cuid())
+  teacherId String   @map("teacher_id")
+  teacher   Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  className String   @map("class_name")
+  batch     String
+  subject   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([teacherId, className, batch, subject])
+  @@index([className, batch])
+  @@map("batch_assignments")
+}
+
+model TimetableSlot {
+  id        String   @id @default(cuid())
+  dayOfWeek Int      @map("day_of_week") // 0 = Sunday … 6 = Saturday
+  startTime String   @map("start_time") // HH:MM (24h)
+  endTime   String   @map("end_time")
+  className String   @map("class_name")
+  batch     String
+  subject   String
+  teacherId String?  @map("teacher_id")
+  teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  room      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([dayOfWeek])
+  @@index([className, batch])
+  @@map("timetable_slots")
+}
+
+// ---------------------------------------------------------------------------
+// Study materials & assignments
+// ---------------------------------------------------------------------------
+
+model StudyMaterial {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  kind        String   @default("material") // material | assignment
+  className   String   @map("class_name")
+  batch       String   @default("")
+  subject     String?
+  url         String?
+  fileName    String?  @map("file_name")
+  fileData    String?  @map("file_data") // small data URL, optional
+  dueDate     String?  @map("due_date")
+  uploadedBy  String?  @map("uploaded_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([className, batch])
+  @@map("study_materials")
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail for important changes
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  entity    String
+  entityId  String?  @map("entity_id")
+  action    String
+  detail    String?
+  actor     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
