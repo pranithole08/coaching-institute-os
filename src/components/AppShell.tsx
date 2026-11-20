@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   BarChart3,
+  BookOpen,
   CalendarCheck,
   CalendarDays,
   ClipboardList,
@@ -22,6 +23,7 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 import type { AuthUser } from '@/pages/Login'
 import { Dashboard } from '@/pages/Dashboard'
 import { Students } from '@/pages/Students'
+import { StudentPortal } from '@/pages/StudentPortal'
 import { Attendance } from '@/pages/Attendance'
 import { Tests } from '@/pages/Tests'
 import { Faculty } from '@/pages/Faculty'
@@ -35,6 +37,7 @@ import { Settings } from '@/pages/Settings'
 export type RouteKey =
   | 'dashboard'
   | 'students'
+  | 'student-portal'
   | 'attendance'
   | 'tests'
   | 'faculty'
@@ -55,6 +58,7 @@ type NavItem = {
 const NAV: NavItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'students', label: 'Students', icon: Users },
+  { key: 'student-portal', label: 'Student Portal', icon: BookOpen },
   { key: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { key: 'tests', label: 'Tests', icon: ClipboardList },
   { key: 'faculty', label: 'Faculty', icon: GraduationCap },
@@ -196,6 +200,7 @@ export function AppShell({ user, onLogout }: { user: AuthUser; onLogout: () => v
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           {route === 'dashboard' ? <Dashboard onNavigate={navigate} /> : null}
           {route === 'students' ? <Students isAdmin={isAdmin} /> : null}
+          {route === 'student-portal' ? <StudentPortal user={user} /> : null}
           {route === 'attendance' ? <Attendance /> : null}
           {route === 'tests' ? <Tests isAdmin={isAdmin} /> : null}
           {route === 'faculty' ? <Faculty /> : null}
