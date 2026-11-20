@@ -285,7 +285,7 @@ async function main() {
     const models = dmmf.datamodel.models
     const enums = dmmf.datamodel.enums
 
-    console.log(`   Found ${models.length} model(s): ${models.map(m => m.name).join(', ')}`)
+    console.log(`   Found ${models.length} model(s): ${models.map((m: any) => m.name).join(', ')}`)
 
     // Generate types.ts
     writeFileSync(join(OUTPUT_DIR, 'types.ts'), generateTypes(models, enums))
