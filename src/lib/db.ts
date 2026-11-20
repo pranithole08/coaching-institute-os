@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import fs from 'node:fs'
-import path from 'node:path'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { PrismaLibSql } from '@prisma/adapter-libsql'
 import { PrismaClient } from '../generated/prisma/client'
 
@@ -10,8 +10,8 @@ const globalForPrisma = globalThis as unknown as {
 
 function getDatabaseUrl(): string {
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL
-  const prismaDb = path.resolve(process.cwd(), 'prisma/dev.db')
-  if (fs.existsSync(prismaDb)) {
+  const prismaDb = resolve(process.cwd(), 'prisma/dev.db')
+  if (existsSync(prismaDb)) {
     return `file:${prismaDb}`
   }
   return 'file:./dev.db'

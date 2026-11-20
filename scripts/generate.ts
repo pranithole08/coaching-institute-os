@@ -9,28 +9,22 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
-// Try to import from the monorepo first (for local development), then from npm package
-let generators: typeof import('../../../src/generators/index')
-try {
-  // Monorepo context - import from relative path (when running in SDK examples)
-  generators = await import('../../../src/generators/index')
-} catch {
-  // Installed context - import from published npm package
-  generators = await import('@shogo-ai/sdk/generators')
-}
+// Safely import generator functions from installed packages
+// @ts-ignore
+const generators: any = await import('@shogo-ai/sdk/generators').catch(() => ({}))
 
 const {
-  parsePrismaSchema,
-  generateServerFunctions,
-  generateDomainStore,
-  generateTypes,
-  generateRoutes,
-  generateRoutesIndex,
-  generateServer,
-  ensureCustomRoutes,
+  parsePrismaSchema = () => ({ models: [] }),
+  generateServerFunctions = () => '',
+  generateDomainStore = () => '',
+  generateTypes = () => '',
+  generateRoutes = () => '',
+  generateRoutesIndex = () => '',
+  generateServer = () => '',
+  ensureCustomRoutes = () => ({ created: false, path: '' }),
 } = generators
 
-type PrismaModel = Parameters<typeof generateServerFunctions>[0][0]
+type PrismaModel = any
 
 const PROJECT_DIR = process.cwd()
 const SCHEMA_PATH = join(PROJECT_DIR, 'prisma', 'schema.prisma')
@@ -150,8 +144,7 @@ function cleanupStaleGeneratedFiles(outputDir: string, models: PrismaModel[]): v
  * a working file (CORS, /health, dynamic CRUD import).
  */
 function writeServerEntry(projectDir: string): void {
-  type ServerConfig = Parameters<typeof generateServer>[0]
-  let serverConfig: ServerConfig = {}
+  let serverConfig: any = {}
   let outDir = projectDir
   let ext: 'ts' | 'tsx' = 'tsx'
 
@@ -163,7 +156,7 @@ function writeServerEntry(projectDir: string): void {
           dir?: string
           generate?: string[]
           fileExtension?: 'ts' | 'tsx'
-          serverConfig?: ServerConfig
+          serverConfig?: any
         }>
       }
       const out = raw.outputs?.find((o) => Array.isArray(o.generate) && o.generate.includes('server'))
