@@ -351,8 +351,24 @@ api.get('/students', requireAuth, async (c) => {
     ]
   }
 
+  // Students see their own student record directly
+  if (me.role === 'student') {
+    const myStudent = await prisma.student.findFirst({
+      where: { OR: [{ name: me.name ?? '' }, { parentEmail: me.email }] },
+      include: {
+        invoices: { where: { status: 'pending' }, orderBy: { dueDate: 'asc' }, take: 1 },
+        _count: { select: { attendance: true, results: true } },
+      },
+    })
+    if (myStudent) {
+      return c.json({
+        students: [{ ...myStudent, pendingInvoice: myStudent.invoices[0] ?? null, invoices: undefined }],
+      })
+    }
+  }
+
   // Teachers only ever see the batches they are assigned to.
-  if (scopes !== null) {
+  if (me.role === 'teacher' && scopes !== null) {
     if (scopes.length === 0) return c.json({ students: [] })
     where.AND = [{ OR: scopes.map((s) => ({ className: s.className, batch: s.batch })) }]
   }
@@ -559,9 +575,12 @@ api.get('/attendance', requireAuth, async (c) => {
   })
   const records = await prisma.attendance.findMany({ where: { date } })
   const byStudent = new Map(records.map((r) => [r.studentId, r]))
+  const confirmedRecord = records.find((r) => r.markedBy)
 
   return c.json({
     date,
+    confirmedBy: confirmedRecord?.markedBy ?? null,
+    confirmedAt: confirmedRecord?.updatedAt ?? null,
     students: students.map((s) => ({
       id: s.id,
       name: s.name,
@@ -572,12 +591,14 @@ api.get('/attendance', requireAuth, async (c) => {
       parentPhone: s.parentPhone,
       status: byStudent.get(s.id)?.status ?? null,
       note: byStudent.get(s.id)?.note ?? null,
+      markedBy: byStudent.get(s.id)?.markedBy ?? null,
       attendanceId: byStudent.get(s.id)?.id ?? null,
     })),
     summary: {
       present: records.filter((r) => r.status === 'present').length,
       absent: records.filter((r) => r.status === 'absent').length,
       late: records.filter((r) => r.status === 'late').length,
+      holiday: records.filter((r) => r.status === 'holiday').length,
       marked: records.length,
       total: students.length,
     },
@@ -752,6 +773,72 @@ api.post('/attendance/save', requireAuth, async (c) => {
     corrected,
     unchanged,
     notified,
+    confirmedBy: me.name ?? me.email,
+  })
+})
+
+api.post('/attendance/holiday', requireAuth, async (c) => {
+  const me = currentUser(c)
+  const input = await body<{
+    date?: string
+    className?: string
+    batch?: string
+    reason?: string
+  }>(c)
+  const date = str(input.date) || todayIso()
+  const className = str(input.className)
+  const batch = str(input.batch)
+  const reason = str(input.reason) || 'Institute Holiday'
+
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return c.json({ error: 'Valid attendance date (YYYY-MM-DD) is required' }, 400)
+  }
+
+  const where: Record<string, unknown> = { status: 'active' }
+  if (className && className !== 'all') where.className = className
+  if (batch && batch !== 'all') where.batch = batch
+
+  const students = await prisma.student.findMany({ where, select: { id: true, name: true } })
+  if (students.length === 0) {
+    return c.json({ error: 'No active students found to mark as holiday' }, 400)
+  }
+
+  const actor = me.name ?? me.email
+  let markedCount = 0
+
+  for (const s of students) {
+    await prisma.attendance.upsert({
+      where: { studentId_date_session: { studentId: s.id, date, session: '' } },
+      create: {
+        studentId: s.id,
+        date,
+        session: '',
+        status: 'holiday',
+        note: reason,
+        markedBy: actor,
+        source: 'manual',
+      },
+      update: {
+        status: 'holiday',
+        note: reason,
+        markedBy: actor,
+      },
+    })
+    markedCount += 1
+  }
+
+  await logActivity(
+    'attendance',
+    `Marked ${date} as Holiday (${reason}) for ${markedCount} students`,
+    actor,
+  )
+
+  return c.json({
+    ok: true,
+    date,
+    reason,
+    marked: markedCount,
+    confirmedBy: actor,
   })
 })
 
@@ -827,7 +914,16 @@ api.get('/attendance/history', requireAuth, async (c) => {
     take: 200,
     include: { student: { select: { name: true, className: true, batch: true } } },
   })
-  return c.json({ records })
+  return c.json({
+    records: records.map((r) => ({
+      id: r.id,
+      date: r.date,
+      status: r.status,
+      note: r.note,
+      markedBy: r.markedBy,
+      student: r.student,
+    })),
+  })
 })
 
 // ---------------------------------------------------------------------------

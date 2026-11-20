@@ -50,8 +50,27 @@ export async function ensureSeed() {
           passwordHash: hashPassword('teacher123'),
           role: 'teacher',
         },
+        {
+          email: 'student@institute.test',
+          name: 'Aarav Sharma',
+          passwordHash: hashPassword('student123'),
+          role: 'student',
+        },
       ],
     })
+  } else {
+    // Ensure student demo user exists
+    const hasStudent = await prisma.user.findUnique({ where: { email: 'student@institute.test' } })
+    if (!hasStudent) {
+      await prisma.user.create({
+        data: {
+          email: 'student@institute.test',
+          name: 'Aarav Sharma',
+          passwordHash: hashPassword('student123'),
+          role: 'student',
+        },
+      })
+    }
   }
 
   if (!(await prisma.setting.findUnique({ where: { key: SETTING_KEYS.instituteName } }))) {

@@ -80,12 +80,42 @@ export function Login({ onLogin }: { onLogin: (user: AuthUser) => void }) {
             </Button>
           </form>
 
-          <div className="mt-4 rounded-lg border border-dashed bg-card/60 p-3 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">Demo accounts</p>
-            <p className="mt-1">
-              Admin — admin@institute.test / admin123
-              <br />
-              Teacher — teacher@institute.test / teacher123
+          <div className="mt-4 rounded-xl border border-dashed bg-card/60 p-3 text-xs text-muted-foreground">
+            <p className="font-semibold text-foreground mb-2">Quick Sign-in (Demo Accounts):</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('admin@institute.test')
+                  setPassword('admin123')
+                }}
+                className="px-2 py-1.5 rounded-lg border bg-secondary/60 hover:bg-secondary text-foreground text-center font-medium transition-colors"
+              >
+                Admin
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('teacher@institute.test')
+                  setPassword('teacher123')
+                }}
+                className="px-2 py-1.5 rounded-lg border bg-secondary/60 hover:bg-secondary text-foreground text-center font-medium transition-colors"
+              >
+                Teacher
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('student@institute.test')
+                  setPassword('student123')
+                }}
+                className="px-2 py-1.5 rounded-lg border bg-secondary/60 hover:bg-secondary text-foreground text-center font-medium transition-colors"
+              >
+                Student
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Admin: admin@institute.test · Teacher: teacher@institute.test · Student: student@institute.test
             </p>
           </div>
         </div>

@@ -266,7 +266,7 @@ finance.post('/finance/invoices/:id/discount', requireAuth, requireAdmin, async 
 // Payments
 // ---------------------------------------------------------------------------
 
-finance.post('/finance/payments', requireAuth, requireAdmin, async (c) => {
+finance.post('/finance/payments', requireAuth, async (c) => {
   const input = await body<Record<string, unknown>>(c)
   const invoiceId = str(input.invoiceId)
   if (!invoiceId) return c.json({ error: 'invoiceId is required' }, 400)
@@ -288,7 +288,8 @@ finance.post('/finance/payments', requireAuth, requireAdmin, async (c) => {
   return c.json(result, 201)
 })
 
-finance.get('/finance/payments', requireAuth, requireAdmin, async (c) => {
+finance.get('/finance/payments', requireAuth, async (c) => {
+  const me = currentUser(c)
   const studentId = str(c.req.query('studentId'))
   const from = str(c.req.query('from'))
   const to = str(c.req.query('to'))
@@ -316,7 +317,7 @@ finance.get('/finance/payments', requireAuth, requireAdmin, async (c) => {
   return c.json({ payments })
 })
 
-finance.get('/finance/payments/:id/receipt', requireAuth, requireAdmin, async (c) => {
+finance.get('/finance/payments/:id/receipt', requireAuth, async (c) => {
   const id = c.req.param('id') ?? ''
   const payment = await prisma.feePayment.findUnique({
     where: { id },

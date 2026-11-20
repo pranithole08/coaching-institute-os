@@ -82,7 +82,7 @@ export async function teacherForUser(user: SessionUser) {
 export async function teacherScopes(
   user: SessionUser,
 ): Promise<{ className: string; batch: string; subject: string }[] | null> {
-  if (user.role === 'admin') return null
+  if (user.role === 'admin' || user.role === 'student') return null
   const teacher = await teacherForUser(user)
   if (!teacher) return []
   return teacher.assignments.map((a) => ({

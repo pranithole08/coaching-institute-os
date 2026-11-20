@@ -420,12 +420,10 @@ export function Tests({ isAdmin = false }: { isAdmin?: boolean }) {
         title="Tests & performance"
         description="Enter marks as a draft, review, then publish. Parents are only messaged after you publish."
         actions={
-          isAdmin ? (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="size-4" />
-              New test
-            </Button>
-          ) : null
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
+            New test
+          </Button>
         }
       />
 
@@ -480,11 +478,9 @@ export function Tests({ isAdmin = false }: { isAdmin?: boolean }) {
               : 'Pick another subject, or create a test for this one.'
           }
           action={
-            isAdmin ? (
-              <Button size="sm" onClick={() => setCreateOpen(true)}>
-                <Plus className="size-4" /> New test
-              </Button>
-            ) : null
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="size-4" /> New test
+            </Button>
           }
         />
       ) : (

@@ -15,10 +15,13 @@ profile.get('/students/:id/profile', requireAuth, async (c) => {
   const student = await prisma.student.findUnique({ where: { id } })
   if (!student) return c.json({ error: 'Student not found' }, 404)
 
-  // A teacher may only open students inside their own batches.
-  const scopes = await teacherScopes(currentUser(c))
-  if (!scopeAllows(scopes, student.className, student.batch)) {
-    return c.json({ error: 'You are not assigned to that class and batch' }, 403)
+  // Teachers may only open students inside their assigned batches (if any).
+  const user = currentUser(c)
+  if (user.role === 'teacher') {
+    const scopes = await teacherScopes(user)
+    if (scopes && scopes.length > 0 && !scopeAllows(scopes, student.className, student.batch)) {
+      return c.json({ error: 'You are not assigned to that class and batch' }, 403)
+    }
   }
 
   const [attendance, results, invoices, payments, materials, messages, sheets] = await Promise.all([
@@ -155,6 +158,8 @@ profile.get('/students/:id/profile', requireAuth, async (c) => {
       })),
     },
     fees: {
+      feeAmount: student.feeAmount,
+      dueDay: student.feeDueDay,
       billed,
       paid,
       outstanding,
@@ -164,7 +169,9 @@ profile.get('/students/:id/profile', requireAuth, async (c) => {
         period: i.period,
         amount: i.amount,
         discount: i.discount,
+        net: Math.max(0, i.amount - i.discount),
         paidAmount: i.paidAmount,
+        balance: Math.max(0, i.amount - i.discount - i.paidAmount),
         outstanding: Math.max(0, i.amount - i.discount - i.paidAmount),
         dueDate: i.dueDate,
         status: i.status,
@@ -190,9 +197,12 @@ profile.get('/students/:id/attendance', requireAuth, async (c) => {
     select: { className: true, batch: true },
   })
   if (!target) return c.json({ error: 'Student not found' }, 404)
-  const scopes = await teacherScopes(currentUser(c))
-  if (!scopeAllows(scopes, target.className, target.batch)) {
-    return c.json({ error: 'You are not assigned to that class and batch' }, 403)
+  const user = currentUser(c)
+  if (user.role === 'teacher') {
+    const scopes = await teacherScopes(user)
+    if (scopes && scopes.length > 0 && !scopeAllows(scopes, target.className, target.batch)) {
+      return c.json({ error: 'You are not assigned to that class and batch' }, 403)
+    }
   }
 
   const records = await prisma.attendance.findMany({

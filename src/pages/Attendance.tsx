@@ -3,10 +3,12 @@ import {
   ArrowLeft,
   CalendarCheck,
   Check,
+  CheckCircle2,
   ChevronRight,
   Clock,
   Layers,
   School,
+  SunMedium,
   X,
 } from 'lucide-react'
 import { api, errorMessage } from '@/lib/api'
@@ -14,6 +16,12 @@ import { formatDate, todayIso } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -44,23 +52,28 @@ type Row = {
   parentPhone: string
   status: string | null
   note: string | null
+  markedBy?: string | null
   attendanceId: string | null
 }
 
 type AttendanceData = {
   date: string
+  confirmedBy?: string | null
+  confirmedAt?: string | null
   students: Row[]
-  summary: { present: number; absent: number; late: number; marked: number; total: number }
+  summary: { present: number; absent: number; late: number; holiday?: number; marked: number; total: number }
 }
 
 type HistoryRecord = {
   id: string
   date: string
   status: string
+  note?: string | null
+  markedBy?: string | null
   student: { name: string; className: string; batch: string }
 }
 
-type Draft = Record<string, { status: 'present' | 'absent' | ''; note: string }>
+type Draft = Record<string, { status: 'present' | 'absent' | 'holiday' | ''; note: string }>
 
 type Step = 'classes' | 'batches' | 'roster'
 
@@ -83,6 +96,11 @@ export function Attendance() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const [holidayOpen, setHolidayOpen] = useState(false)
+  const [holidayReason, setHolidayReason] = useState('Public Holiday')
+  const [holidayScope, setHolidayScope] = useState<'batch' | 'all'>('batch')
+  const [holidaySaving, setHolidaySaving] = useState(false)
 
   const [history, setHistory] = useState<HistoryRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -130,7 +148,7 @@ export function Attendance() {
       const next: Draft = {}
       for (const s of res.students) {
         next[s.id] = {
-          status: s.status === 'present' || s.status === 'absent' ? s.status : '',
+          status: s.status === 'present' || s.status === 'absent' || s.status === 'holiday' ? (s.status as any) : '',
           note: s.note ?? '',
         }
       }
@@ -162,14 +180,16 @@ export function Attendance() {
     const rows = data?.students ?? []
     let present = 0
     let absent = 0
+    let holiday = 0
     let unmarked = 0
     for (const s of rows) {
       const status = draft[s.id]?.status
       if (status === 'present') present += 1
       else if (status === 'absent') absent += 1
+      else if (status === 'holiday') holiday += 1
       else unmarked += 1
     }
-    return { total: rows.length, present, absent, unmarked }
+    return { total: rows.length, present, absent, holiday, unmarked }
   }, [data, draft])
 
   const dirtyCount = useMemo(() => {
@@ -177,7 +197,7 @@ export function Attendance() {
     return data.students.filter((s) => {
       const d = draft[s.id]
       if (!d) return false
-      const savedStatus = s.status === 'present' || s.status === 'absent' ? s.status : ''
+      const savedStatus = s.status === 'present' || s.status === 'absent' || s.status === 'holiday' ? s.status : ''
       return d.status !== savedStatus || d.note !== (s.note ?? '')
     }).length
   }, [data, draft])
@@ -212,6 +232,28 @@ export function Attendance() {
     setDraft(next)
   }
 
+  async function handleMarkHoliday() {
+    setHolidaySaving(true)
+    try {
+      const res = await api.post<{ ok: boolean; count: number; date: string; reason: string; confirmedBy?: string }>('/attendance/holiday', {
+        date,
+        className: holidayScope === 'batch' ? activeClass : 'all',
+        batch: holidayScope === 'batch' ? activeBatch : 'all',
+        reason: holidayReason,
+      })
+      toast('Holiday marked successfully', {
+        variant: 'success',
+        description: `${formatDate(date)} marked as holiday (${res.reason}) for ${res.count} students. Confirmed by ${res.confirmedBy || 'Teacher'}.`,
+      })
+      setHolidayOpen(false)
+      if (step === 'roster') await loadRoster()
+    } catch (err) {
+      toast('Failed to mark holiday', { variant: 'error', description: errorMessage(err) })
+    } finally {
+      setHolidaySaving(false)
+    }
+  }
+
   async function save() {
     if (!data) return
     const rows = data.students
@@ -235,6 +277,7 @@ export function Attendance() {
         corrected: number
         unchanged: number
         notified: number
+        confirmedBy?: string
       }>('/attendance/save', {
         date,
         className: activeClass,
@@ -248,9 +291,9 @@ export function Attendance() {
       ].filter(Boolean)
       toast('Attendance saved', {
         variant: 'success',
-        description: `${activeClass} · ${activeBatch} · ${formatDate(date)} — ${bits.join(', ') || 'no changes'}${
+        description: `${activeClass} · ${activeBatch} · ${formatDate(date)} — Confirmed by ${res.confirmedBy || 'Teacher'} (${bits.join(', ') || 'no changes'}${
           res.notified ? ` · ${res.notified} parent notices` : ''
-        }`,
+        })`,
       })
       setConfirmOpen(false)
       await loadRoster()
@@ -333,8 +376,8 @@ export function Attendance() {
         </TabsContent>
 
         <TabsContent value="mark" className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 flex-wrap">
               <CalendarCheck className="size-4 text-muted-foreground" />
               <Input
                 type="date"
@@ -343,6 +386,16 @@ export function Attendance() {
                 className="sm:w-44"
                 aria-label="Attendance date"
               />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setHolidayOpen(true)}
+                className="gap-1.5 text-xs text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+              >
+                <SunMedium className="size-3.5 text-amber-500" />
+                Mark as Holiday
+              </Button>
             </div>
             <div className="hidden sm:block">{breadcrumb}</div>
           </div>
@@ -442,27 +495,48 @@ export function Attendance() {
                 </div>
               </div>
 
-              <div className="rounded-xl border bg-card p-3 sm:p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">
-                      {activeClass} · {activeBatch}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">{formatDate(date)}</p>
+              <div className="space-y-3">
+                {data?.confirmedBy ? (
+                  <div className="flex items-center gap-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 text-xs text-emerald-800 dark:text-emerald-300">
+                    <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div>
+                      <span>Attendance recorded & confirmed by <strong className="font-semibold">{data.confirmedBy}</strong></span>
+                      {data.confirmedAt ? (
+                        <span className="text-muted-foreground text-[11px] ml-1.5">
+                          ({new Date(data.confirmedAt).toLocaleDateString()} {new Date(data.confirmedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                    <span className="rounded-full bg-secondary px-2.5 py-1 font-medium text-muted-foreground">
-                      {counts.total} total
-                    </span>
-                    <span className="rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
-                      {counts.present} present
-                    </span>
-                    <span className="rounded-full bg-destructive/10 px-2.5 py-1 font-medium text-destructive">
-                      {counts.absent} absent
-                    </span>
-                    <span className="rounded-full border px-2.5 py-1 font-medium text-muted-foreground">
-                      {counts.unmarked} unmarked
-                    </span>
+                ) : null}
+
+                <div className="rounded-xl border bg-card p-3 sm:p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">
+                        {activeClass} · {activeBatch}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">{formatDate(date)}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <span className="rounded-full bg-secondary px-2.5 py-1 font-medium text-muted-foreground">
+                        {counts.total} total
+                      </span>
+                      <span className="rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
+                        {counts.present} present
+                      </span>
+                      <span className="rounded-full bg-destructive/10 px-2.5 py-1 font-medium text-destructive">
+                        {counts.absent} absent
+                      </span>
+                      {counts.holiday > 0 ? (
+                        <span className="rounded-full bg-amber-500/10 px-2.5 py-1 font-medium text-amber-600 dark:text-amber-400">
+                          {counts.holiday} holiday
+                        </span>
+                      ) : null}
+                      <span className="rounded-full border px-2.5 py-1 font-medium text-muted-foreground">
+                        {counts.unmarked} unmarked
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -481,13 +555,15 @@ export function Attendance() {
                   <ul className="divide-y">
                     {data.students.map((s) => {
                       const d = draft[s.id] ?? { status: '', note: '' }
-                      const marked = d.status === 'present' || d.status === 'absent'
+                      const marked = d.status === 'present' || d.status === 'absent' || d.status === 'holiday'
+                      const isHoliday = d.status === 'holiday' || s.status === 'holiday'
                       return (
                         <li
                           key={s.id}
                           className={cn(
                             'flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4',
                             !marked && 'bg-amber-50/40 dark:bg-amber-950/20',
+                            isHoliday && 'bg-amber-500/5',
                           )}
                         >
                           <div className="min-w-0 sm:flex-1">
@@ -508,25 +584,33 @@ export function Attendance() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            {s.attendanceId ? (
-                              <StatusBadge status={s.status ?? 'present'} className="mr-1" />
-                            ) : null}
-                            <Button
-                              size="sm"
-                              variant={d.status === 'present' ? 'default' : 'outline'}
-                              className="h-8 flex-1 px-2.5 sm:flex-none"
-                              onClick={() => setStatus(s.id, 'present')}
-                            >
-                              <Check className="size-3.5" /> Present
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant={d.status === 'absent' ? 'destructive' : 'outline'}
-                              className="h-8 flex-1 px-2.5 sm:flex-none"
-                              onClick={() => setStatus(s.id, 'absent')}
-                            >
-                              <X className="size-3.5" /> Absent
-                            </Button>
+                            {isHoliday ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                                <SunMedium className="size-3.5" /> Holiday ({d.note || s.note || 'Institute Closed'})
+                              </span>
+                            ) : (
+                              <>
+                                {s.attendanceId ? (
+                                  <StatusBadge status={s.status ?? 'present'} className="mr-1" />
+                                ) : null}
+                                <Button
+                                  size="sm"
+                                  variant={d.status === 'present' ? 'default' : 'outline'}
+                                  className="h-8 flex-1 px-2.5 sm:flex-none"
+                                  onClick={() => setStatus(s.id, 'present')}
+                                >
+                                  <Check className="size-3.5" /> Present
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant={d.status === 'absent' ? 'destructive' : 'outline'}
+                                  className="h-8 flex-1 px-2.5 sm:flex-none"
+                                  onClick={() => setStatus(s.id, 'absent')}
+                                >
+                                  <X className="size-3.5" /> Absent
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </li>
                       )
@@ -566,6 +650,8 @@ export function Attendance() {
                       <p className="truncate text-sm font-medium">{r.student.name}</p>
                       <p className="truncate text-[11px] text-muted-foreground">
                         {r.student.className} · {r.student.batch}
+                        {r.markedBy ? ` · Confirmed by: ${r.markedBy}` : ''}
+                        {r.note ? ` · Note: ${r.note}` : ''}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -593,10 +679,75 @@ export function Attendance() {
         onConfirm={save}
       />
 
+      {/* Mark Date as Holiday Dialog */}
+      <Dialog open={holidayOpen} onOpenChange={setHolidayOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <SunMedium className="size-5 text-amber-500" />
+              Mark Date as Holiday
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Holiday Date</label>
+              <Input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Reason / Festival Name</label>
+              <Input
+                value={holidayReason}
+                onChange={(e) => setHolidayReason(e.target.value)}
+                placeholder="e.g. Diwali Holiday, National Holiday, Heavy Rain"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Target Scope</label>
+              <Select
+                value={holidayScope}
+                onValueChange={(v) => setHolidayScope(v as 'batch' | 'all')}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeClass && activeBatch ? (
+                    <SelectItem value="batch">Current Batch ({activeClass} · {activeBatch})</SelectItem>
+                  ) : null}
+                  <SelectItem value="all">Entire Institute (All Active Students)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 p-3 text-xs text-amber-800 dark:text-amber-300">
+              Marking this date will record a Holiday for all students in scope. Your name will be recorded as the confirming staff member in the institute attendance log.
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setHolidayOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+                onClick={handleMarkHoliday}
+                disabled={holidaySaving}
+              >
+                {holidaySaving ? 'Marking…' : 'Confirm Holiday'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
         <Clock className="size-3.5" />
         Re-saving the same day corrects existing records instead of duplicating them, and every
-        correction is written to the audit trail.
+        confirmation is written to the audit trail with the teacher's name.
       </div>
     </div>
   )

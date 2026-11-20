@@ -78,16 +78,35 @@ function readHash(visible: NavItem[]): RouteKey {
 
 export function AppShell({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const isAdmin = user.role === 'admin'
-  const visible = NAV.filter((n) => !n.adminOnly || isAdmin)
+  const isStudent = user.role === 'student'
 
-  const [route, setRoute] = useState<RouteKey>(() => readHash(visible))
+  const visible = isStudent
+    ? [
+        { key: 'student-portal' as RouteKey, label: 'My Student Portal', icon: BookOpen },
+        { key: 'tests' as RouteKey, label: 'Tests & Scores', icon: ClipboardList },
+        { key: 'timetable' as RouteKey, label: 'Class Timetable', icon: CalendarDays },
+        { key: 'messages' as RouteKey, label: 'Announcements', icon: MessageSquare },
+      ]
+    : NAV.filter((n) => !n.adminOnly || isAdmin)
+
+  const [route, setRoute] = useState<RouteKey>(() => {
+    if (isStudent) return 'student-portal'
+    return readHash(visible)
+  })
   const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
-    const onHash = () => setRoute(readHash(visible))
+    const onHash = () => {
+      const target = readHash(visible)
+      if (isStudent && !visible.some((v) => v.key === target)) {
+        setRoute('student-portal')
+      } else {
+        setRoute(target)
+      }
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [visible])
+  }, [visible, isStudent])
 
   function navigate(key: RouteKey) {
     window.location.hash = `#/${key}`
@@ -138,7 +157,7 @@ export function AppShell({ user, onLogout }: { user: AuthUser; onLogout: () => v
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold leading-tight">Coaching Institute OS</p>
         <p className="truncate text-[11px] text-muted-foreground">
-          {isAdmin ? 'Admin console' : 'Faculty workspace'}
+          {isAdmin ? 'Admin console' : isStudent ? 'Student & Parent Portal' : 'Faculty workspace'}
         </p>
       </div>
     </div>
@@ -198,12 +217,12 @@ export function AppShell({ user, onLogout }: { user: AuthUser; onLogout: () => v
 
       <main className="md:pl-60">
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-          {route === 'dashboard' ? <Dashboard onNavigate={navigate} /> : null}
-          {route === 'students' ? <Students isAdmin={isAdmin} /> : null}
+          {route === 'dashboard' && !isStudent ? <Dashboard onNavigate={navigate} /> : null}
+          {route === 'students' && !isStudent ? <Students isAdmin={isAdmin} /> : null}
           {route === 'student-portal' ? <StudentPortal user={user} /> : null}
-          {route === 'attendance' ? <Attendance /> : null}
+          {route === 'attendance' && !isStudent ? <Attendance /> : null}
           {route === 'tests' ? <Tests isAdmin={isAdmin} /> : null}
-          {route === 'faculty' ? <Faculty /> : null}
+          {route === 'faculty' && !isStudent ? <Faculty /> : null}
           {route === 'timetable' ? <Timetable isAdmin={isAdmin} /> : null}
           {route === 'finance' && isAdmin ? <Finance /> : null}
           {route === 'analytics' && isAdmin ? <Analytics /> : null}
