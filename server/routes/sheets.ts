@@ -479,6 +479,8 @@ sheets.post('/sheets/:id/rows/bulk', requireAuth, async (c) => {
 // unsure about and returns suggestions the teacher still has to accept.
 // ---------------------------------------------------------------------------
 
+import { analyzeAIImage, getAIConfig } from '../ai'
+
 sheets.post('/sheets/:id/ai-assist', requireAuth, async (c) => {
   const id = c.req.param('id') ?? ''
   const sheet = await prisma.attendanceSheet.findUnique({ where: { id }, include: { rows: true } })
@@ -487,13 +489,12 @@ sheets.post('/sheets/:id/ai-assist', requireAuth, async (c) => {
     return c.json({ error: 'This sheet is confirmed. Reopen it to make corrections.' }, 409)
   }
 
-  const url = await getSetting(SETTING_KEYS.ollamaUrl)
-  const model = await getSetting(SETTING_KEYS.ollamaModel)
-  if (!url || !model) {
+  const aiConfig = await getAIConfig()
+  if (!aiConfig.configured) {
     return c.json(
       {
         error:
-          'Ollama is not configured. Add the base URL and a vision model (for example llava) in Settings → AI.',
+          'AI Vision is not configured. Configure an AI provider (OpenAI, Gemini, Ollama, etc.) in Settings → AI.',
       },
       412,
     )
@@ -513,39 +514,19 @@ sheets.post('/sheets/:id/ai-assist', requireAuth, async (c) => {
     const rowId = str(item.rowId)
     const image = str(item.image)
     if (!known.has(rowId) || !image.startsWith('data:image/')) continue
-    const base64 = image.split(',')[1] ?? ''
-    if (!base64) continue
 
     try {
-      const res = await fetch(`${url.replace(/\/$/, '')}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          prompt,
-          images: [base64],
-          stream: false,
-          options: { temperature: 0 },
-        }),
-        signal: AbortSignal.timeout(45_000),
+      const raw = await analyzeAIImage({
+        imageBase64: image,
+        prompt,
       })
-      if (!res.ok) {
-        return c.json(
-          {
-            error: `Ollama returned HTTP ${res.status}. Check that "${model}" is a vision model and is pulled.`,
-          },
-          502,
-        )
-      }
-      const data = (await res.json()) as { response?: string }
-      const raw = (data.response ?? '').trim()
       const letter = raw.toUpperCase().match(/\b(P|A|L|NONE)\b/)?.[1] ?? null
       const status: MarkStatus | null =
         letter === 'P' ? 'present' : letter === 'A' ? 'absent' : letter === 'L' ? 'late' : null
       suggestions.push({ rowId, status, raw: raw.slice(0, 80) })
     } catch (err) {
       return c.json(
-        { error: err instanceof Error ? err.message : 'Could not reach Ollama' },
+        { error: err instanceof Error ? err.message : 'AI Vision analysis failed' },
         502,
       )
     }
@@ -555,11 +536,11 @@ sheets.post('/sheets/:id/ai-assist', requireAuth, async (c) => {
     entity: 'attendance_sheet',
     entityId: id,
     action: 'ai_assist',
-    detail: `${suggestions.length} row(s) re-read by ${model}`,
+    detail: `${suggestions.length} row(s) re-read by ${aiConfig.provider}:${aiConfig.model}`,
     actor: actorName(c),
   })
 
-  return c.json({ suggestions, model })
+  return c.json({ suggestions })
 })
 
 // ---------------------------------------------------------------------------

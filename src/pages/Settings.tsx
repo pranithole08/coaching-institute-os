@@ -86,6 +86,15 @@ export function Settings({ user }: { user: AuthUser }) {
   const [ollamaUrl, setOllamaUrl] = useState('')
   const [ollamaModel, setOllamaModel] = useState('')
 
+  // Universal AI Engine
+  const [aiProvider, setAiProvider] = useState('openai')
+  const [aiApiKey, setAiApiKey] = useState('')
+  const [aiBaseUrl, setAiBaseUrl] = useState('https://api.openai.com/v1')
+  const [aiModel, setAiModel] = useState('gpt-4o-mini')
+  const [aiConfigured, setAiConfigured] = useState(false)
+  const [testingAI, setTestingAI] = useState(false)
+  const [aiTestResult, setAiTestResult] = useState<string | null>(null)
+
   const [templates, setTemplates] = useState<Record<string, string>>({})
   const [templatesSaving, setTemplatesSaving] = useState(false)
 
@@ -115,6 +124,15 @@ export function Settings({ user }: { user: AuthUser }) {
       setRepeatDays(String(res.settings.feeReminderRepeatDays))
       setOllamaUrl(res.settings.ollamaUrl)
       setOllamaModel(res.settings.ollamaModel)
+
+      api.get<{ configured: boolean; provider: string; baseUrl: string; model: string }>('/ai/status')
+        .then((aiRes) => {
+          if (aiRes.provider) setAiProvider(aiRes.provider)
+          if (aiRes.baseUrl) setAiBaseUrl(aiRes.baseUrl)
+          if (aiRes.model) setAiModel(aiRes.model)
+          setAiConfigured(aiRes.configured)
+        })
+        .catch(() => {})
     } catch (err) {
       toast('Could not load settings', { variant: 'error', description: errorMessage(err) })
     } finally {
@@ -155,15 +173,36 @@ export function Settings({ user }: { user: AuthUser }) {
         feeReminderRepeatDays: Number(repeatDays) || 3,
         ollamaUrl,
         ollamaModel,
+        aiProvider,
+        aiApiKey: aiApiKey || undefined,
+        aiBaseUrl,
+        aiModel,
       })
       setToken('')
       setVerifyToken('')
+      setAiApiKey('')
       toast('Settings saved', { variant: 'success' })
       await load()
     } catch (err) {
       toast('Could not save settings', { variant: 'error', description: errorMessage(err) })
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function testAIConnection() {
+    setTestingAI(true)
+    setAiTestResult(null)
+    try {
+      const res = await api.post<{ ok: boolean; response?: string }>('/ai/test')
+      setAiTestResult(res.response ?? 'Connection successful!')
+      toast('AI Connection Successful', { variant: 'success', description: res.response })
+    } catch (err) {
+      const msg = errorMessage(err)
+      toast('AI Connection Failed', { variant: 'error', description: msg })
+      setAiTestResult('Error: ' + msg)
+    } finally {
+      setTestingAI(false)
     }
   }
 
@@ -510,30 +549,125 @@ export function Settings({ user }: { user: AuthUser }) {
         {/* AI */}
         <TabsContent value="ai" className="space-y-4">
           <div className="rounded-xl border bg-card p-4 sm:p-5">
-            <h2 className="text-sm font-semibold">Ollama (optional)</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Connect a local or hosted Ollama instance to draft parent messages with AI. Leave
-              blank to disable — the rest of the app works without it.
-            </p>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Base URL" hint="e.g. http://localhost:11434">
-                <Input
-                  value={ollamaUrl}
-                  onChange={(e) => setOllamaUrl(e.target.value)}
-                  placeholder="http://localhost:11434"
-                />
-              </Field>
-              <Field label="Model" hint="e.g. llama3.1, qwen2.5">
-                <Input
-                  value={ollamaModel}
-                  onChange={(e) => setOllamaModel(e.target.value)}
-                  placeholder="llama3.1"
-                />
-              </Field>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold flex items-center gap-2">
+                  Universal AI Engine
+                  {aiConfigured && <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">Connected</span>}
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Connect any AI model (OpenAI, Google Gemini, Groq, DeepSeek, Ollama, or custom OpenAI-compatible API) for parent message drafting and optical sheet scan verification.
+                </p>
+              </div>
             </div>
-            <div className="mt-4 flex justify-end">
+
+            {/* Provider Selector */}
+            <div className="mt-4">
+              <label className="text-xs font-medium text-foreground">Select AI Provider</label>
+              <div className="mt-1.5 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  { id: 'openai', name: 'OpenAI', desc: 'GPT-4o / GPT-4o-mini', base: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+                  { id: 'gemini', name: 'Google Gemini', desc: 'Gemini 2.0 Flash', base: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.0-flash' },
+                  { id: 'groq', name: 'Groq', desc: 'Ultra-fast Llama 3.3', base: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' },
+                  { id: 'deepseek', name: 'DeepSeek', desc: 'DeepSeek-V3 / R1', base: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+                  { id: 'ollama', name: 'Ollama', desc: 'Local / Self-hosted', base: 'http://localhost:11434', model: 'llama3.1' },
+                  { id: 'custom', name: 'Custom API', desc: 'OpenAI-Compatible', base: '', model: '' },
+                ].map((p) => {
+                  const active = aiProvider === p.id
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setAiProvider(p.id)
+                        if (p.base) setAiBaseUrl(p.base)
+                        if (p.model) setAiModel(p.model)
+                        if (p.id === 'ollama') {
+                          setOllamaUrl(p.base)
+                          setOllamaModel(p.model)
+                        }
+                      }}
+                      className={`flex flex-col items-start p-2.5 rounded-lg border text-left transition-all ${
+                        active
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                          : 'border-border/60 hover:border-border hover:bg-muted/40'
+                      }`}
+                    >
+                      <span className="text-xs font-semibold text-foreground">{p.name}</span>
+                      <span className="text-[11px] text-muted-foreground">{p.desc}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Provider Details */}
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field
+                label="API Key"
+                hint={aiProvider === 'ollama' ? 'Not required for local Ollama' : 'Stored securely server-side'}
+              >
+                <Input
+                  type="password"
+                  value={aiApiKey}
+                  onChange={(e) => setAiApiKey(e.target.value)}
+                  placeholder={aiProvider === 'ollama' ? 'Not required' : 'Enter API Key (sk-...)'}
+                  disabled={aiProvider === 'ollama'}
+                />
+              </Field>
+
+              <Field label="Model Name" hint="e.g. gpt-4o-mini, gemini-2.0-flash, llama3.1">
+                <Input
+                  value={aiModel}
+                  onChange={(e) => {
+                    setAiModel(e.target.value)
+                    if (aiProvider === 'ollama') setOllamaModel(e.target.value)
+                  }}
+                  placeholder="e.g. gpt-4o-mini"
+                />
+              </Field>
+
+              <div className="sm:col-span-2">
+                <Field label="API Base URL" hint="Endpoint base URL (without /chat/completions)">
+                  <Input
+                    value={aiBaseUrl}
+                    onChange={(e) => {
+                      setAiBaseUrl(e.target.value)
+                      if (aiProvider === 'ollama') setOllamaUrl(e.target.value)
+                    }}
+                    placeholder="https://api.openai.com/v1"
+                  />
+                </Field>
+              </div>
+            </div>
+
+            {/* Test result banner if present */}
+            {aiTestResult && (
+              <div className="mt-3 p-2.5 rounded-lg bg-muted/60 border text-xs text-foreground flex items-center justify-between">
+                <span><strong>Test output:</strong> {aiTestResult}</span>
+                <button
+                  type="button"
+                  onClick={() => setAiTestResult(null)}
+                  className="text-muted-foreground hover:text-foreground ml-2 text-xs"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={testAIConnection}
+                disabled={testingAI || saving}
+              >
+                {testingAI ? 'Testing Connection…' : 'Test AI Connection'}
+              </Button>
+
               <Button onClick={saveSettings} disabled={saving}>
-                {saving ? 'Saving…' : 'Save AI settings'}
+                {saving ? 'Saving…' : 'Save AI Configuration'}
               </Button>
             </div>
           </div>

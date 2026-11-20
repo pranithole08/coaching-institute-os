@@ -1206,6 +1206,7 @@ api.get('/settings', requireAuth, requireAdmin, async (c) => {
       feeReminderRepeatDays: Number(s[SETTING_KEYS.feeReminderRepeatDays] ?? '3'),
     },
     whatsapp: await whatsappStatus(),
+    ai: await getAIConfig(),
   })
 })
 
@@ -1220,10 +1221,18 @@ api.patch('/settings', requireAuth, requireAdmin, async (c) => {
     ['whatsappApiVersion', SETTING_KEYS.whatsappApiVersion],
     ['ollamaUrl', SETTING_KEYS.ollamaUrl],
     ['ollamaModel', SETTING_KEYS.ollamaModel],
+    ['aiProvider', SETTING_KEYS.aiProvider],
+    ['aiBaseUrl', SETTING_KEYS.aiBaseUrl],
+    ['aiModel', SETTING_KEYS.aiModel],
   ]
   for (const [field, key] of map) {
     if (input[field] !== undefined) await setSetting(key, str(input[field]) || null)
   }
+
+  if (typeof input.aiApiKey === 'string' && input.aiApiKey.trim()) {
+    await setSetting(SETTING_KEYS.aiApiKey, input.aiApiKey.trim())
+  }
+  if (input.clearAiApiKey === true) await setSetting(SETTING_KEYS.aiApiKey, null)
 
   // Secrets: only overwrite when a non-empty value is supplied
   if (typeof input.whatsappToken === 'string' && input.whatsappToken.trim()) {
@@ -1338,21 +1347,40 @@ api.post('/whatsapp/webhook', async (c) => {
 // AI drafting (Ollama) — optional, configured in Settings
 // ---------------------------------------------------------------------------
 
+import { getAIConfig, saveAIConfig, generateAIText, AI_PROVIDERS, type AIProvider } from './server/ai'
+
 api.get('/ai/status', requireAuth, async (c) => {
-  const url = await getSetting(SETTING_KEYS.ollamaUrl)
-  const model = await getSetting(SETTING_KEYS.ollamaModel)
-  return c.json({ configured: Boolean(url && model), url: url ?? '', model: model ?? '' })
+  const config = await getAIConfig()
+  return c.json({
+    configured: config.configured,
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    hasApiKey: Boolean(config.apiKey),
+    providers: AI_PROVIDERS,
+  })
+})
+
+api.post('/ai/config', requireAuth, requireAdmin, async (c) => {
+  const data = await body<{ provider?: string; apiKey?: string; baseUrl?: string; model?: string }>(c)
+  await saveAIConfig(data)
+  const config = await getAIConfig()
+  return c.json({ ok: true, config })
+})
+
+api.post('/ai/test', requireAuth, async (c) => {
+  try {
+    const text = await generateAIText({
+      prompt: 'Reply with "AI connected successfully" in 5 words or less.',
+      system: 'You are a system tester. Be concise.',
+    })
+    return c.json({ ok: true, response: text })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'AI connection test failed' }, 502)
+  }
 })
 
 api.post('/ai/draft', requireAuth, async (c) => {
-  const url = await getSetting(SETTING_KEYS.ollamaUrl)
-  const model = await getSetting(SETTING_KEYS.ollamaModel)
-  if (!url || !model) {
-    return c.json(
-      { error: 'Ollama is not configured. Add the base URL and model in Settings → AI.' },
-      412,
-    )
-  }
   const input = await body<{ prompt?: string; context?: string }>(c)
   const prompt = str(input.prompt)
   if (!prompt) return c.json({ error: 'Prompt is required' }, 400)
@@ -1361,24 +1389,15 @@ api.post('/ai/draft', requireAuth, async (c) => {
   const system = `You write short, warm, professional WhatsApp messages for a coaching institute called ${institute}. Keep it under 60 words, no emojis unless asked, no markdown.`
 
   try {
-    const res = await fetch(`${url.replace(/\/$/, '')}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        prompt: `${system}\n\nContext: ${str(input.context) || 'none'}\n\nTask: ${prompt}\n\nMessage:`,
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(60_000),
+    const text = await generateAIText({
+      prompt,
+      context: str(input.context) || 'none',
+      system,
     })
-    if (!res.ok) {
-      return c.json({ error: `Ollama returned HTTP ${res.status}` }, 502)
-    }
-    const data = (await res.json()) as { response?: string }
-    return c.json({ text: (data.response ?? '').trim() })
+    return c.json({ text })
   } catch (err) {
     return c.json(
-      { error: err instanceof Error ? err.message : 'Could not reach Ollama' },
+      { error: err instanceof Error ? err.message : 'Could not generate draft' },
       502,
     )
   }
